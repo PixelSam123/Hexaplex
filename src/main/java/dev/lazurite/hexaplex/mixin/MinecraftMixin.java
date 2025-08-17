@@ -1,8 +1,8 @@
 package dev.lazurite.hexaplex.mixin;
 
 import dev.lazurite.hexaplex.Hexaplex;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.Timer;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -13,14 +13,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
     @Shadow private volatile boolean pause;
-    @Shadow private float pausePartialTick;
-    @Shadow @Final private Timer timer;
+    @Shadow @Final private DeltaTracker.Timer deltaTracker;
 
     @Inject(
         method = "runTick",
         at = @At(
             value = "INVOKE",
-            target = "Lcom/mojang/blaze3d/pipeline/RenderTarget;unbindWrite()V"
+            target = "Lcom/mojang/blaze3d/pipeline/RenderTarget;blitToScreen()V"
         )
     )
     private void runTick_unbindWrite(boolean bl, CallbackInfo info) {
@@ -31,7 +30,7 @@ public abstract class MinecraftMixin {
 
         // TODO do I need to have this if check?
         if (!Hexaplex.INSTANCE.getProfile().equals(Hexaplex.ProfileNames.NORMAL) && !(Hexaplex.INSTANCE.getStrength() == 0.0)) {
-            Hexaplex.FILTER.render(this.pause ? this.pausePartialTick : this.timer.tickDelta);
+            Hexaplex.FILTER.render(this.pause ? this.deltaTracker.getGameTimeDeltaPartialTick(this.pause) : this.deltaTracker.getGameTimeDeltaTicks());
         }
     }
 

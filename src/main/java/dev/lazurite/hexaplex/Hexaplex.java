@@ -1,15 +1,8 @@
 package dev.lazurite.hexaplex;
 
-import blue.endless.jankson.Jankson;
-import blue.endless.jankson.JsonArray;
-import blue.endless.jankson.JsonElement;
-import blue.endless.jankson.JsonPrimitive;
-import blue.endless.jankson.api.SyntaxError;
-import com.mojang.math.Matrix4f;
+import com.google.gson.*;
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
-import ladysnake.satin.api.managed.ManagedShaderEffect;
-import ladysnake.satin.api.managed.ShaderEffectManager;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.ConfigData;
 import me.shedaniel.autoconfig.annotation.Config;
@@ -25,9 +18,14 @@ import net.minecraft.util.Mth;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
+import org.joml.Matrix4f;
+import org.ladysnake.satin.api.managed.ManagedShaderEffect;
+import org.ladysnake.satin.api.managed.ShaderEffectManager;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.FloatBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,7 +44,7 @@ public final class Hexaplex implements ClientModInitializer, ConfigData, ModMenu
     public static boolean dirty = true;
 
     public static final ManagedShaderEffect FILTER = ShaderEffectManager.getInstance().manage(
-            new ResourceLocation(Hexaplex.MOD_ID, "shaders/post/filter.json"),
+            ResourceLocation.fromNamespaceAndPath(Hexaplex.MOD_ID, "shaders/post/filter.json"),
             shader -> {
                 Hexaplex.FILTER.setUniformValue(
                         UniformNames.RGB_TO_LMS.toString(),
@@ -134,7 +132,7 @@ public final class Hexaplex implements ClientModInitializer, ConfigData, ModMenu
         for (int i = 0; i < values.capacity(); ++i) {
             final var primitive = (JsonPrimitive) array.get(i);
 
-            if (primitive.getValue().equals("")) {
+            if (primitive.getAsString().isEmpty()) {
                 if (variableCount == 0) {
                     // TODO Verify
                     values.put(Mth.clamp((float) (2 * Hexaplex.INSTANCE.getStrength() * Hexaplex.INSTANCE.getSkew()), 0.0f, (float) Hexaplex.INSTANCE.getStrength()));
@@ -143,12 +141,12 @@ public final class Hexaplex implements ClientModInitializer, ConfigData, ModMenu
                 }
                 ++variableCount;
             } else {
-                values.put(primitive.asFloat(0.0f));
+                values.put(primitive.getAsFloat());
             }
         }
 
-        final var matrix = new Matrix4f();
-        matrix.loadTransposed(values);
+        final var matrix = new Matrix4f(values);
+        matrix.transpose();
         return matrix;
     }
 
@@ -196,13 +194,21 @@ public final class Hexaplex implements ClientModInitializer, ConfigData, ModMenu
         Hexaplex.LOGGER.info("Colorful!");
 
         try {
-            Hexaplex.MATRICES.addAll(
-                    Jankson.builder().build().load(
-                            this.getClass().getResourceAsStream("/assets/hexaplex/shaders/uniform/matrix4f/filter.json")
-                    ).values()
-            );
-        } catch (SyntaxError | IOException e) {
-            Hexaplex.LOGGER.error("Error loading Hexaplex shader matrices!");
+            final String path = "/assets/hexaplex/shaders/uniform/matrix4f/filter.json";
+
+            final var in = this.getClass().getResourceAsStream(path);
+            if (in == null) {
+                throw new IOException("Resource not found: " + path);
+            }
+
+            try (final var reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+                final var root = JsonParser.parseReader(reader).getAsJsonObject();
+                for (final var entry : root.entrySet()) {
+                    Hexaplex.MATRICES.add(entry.getValue().getAsJsonArray());
+                }
+            }
+        } catch (IOException | JsonParseException e) {
+            Hexaplex.LOGGER.error("Error loading Hexaplex shader matrices!", e);
             throw new RuntimeException(e);
         }
     }
